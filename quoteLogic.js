@@ -1,124 +1,97 @@
-// Basic quote logic for Buenavista Services Inc
-// NOTE: This is a simplified model; your team can tune the math.
+// INTERNAL PRICING LOGIC
+// This file is NEVER exposed to clients or AI responses
 
-const BASE_MARKET_RATE_PER_SQFT = 0.12; // rough starting point, USD per sqft per month
+const FACILITY_MULTIPLIERS = {
+  office: 1.25,
+  medical: 1.45,
+  educational: 1.20,
+  industrial: 1.30,
+  retail: 1.40
+};
 
-function estimateBaseLabor({ totalSqft, floors, bathrooms }) {
-  const sqft = Number(totalSqft || 0) || 0;
-  const fl = Number(floors || 1) || 1;
-  const baths = Number(bathrooms || 1) || 1;
+export function calculateInternalPricing(input) {
+  const {
+    squareFeet,
+    facilityType,
+    services = [],
+    frequency,
+    is24HourFacility = false,
+    isOneTimeService = false,
+    region
+  } = input;
 
-  // Slight bump for multi-floor and extra bathrooms
-  const multiFloorFactor = fl > 1 ? 1 + (fl - 1) * 0.03 : 1;
-  const bathroomFactor = 1 + (baths - 2) * 0.02;
+  // Base labor cost assumption (internal only)
+  const baseLaborRate = 0.15; // per sq ft baseline
+  let baseCost = squareFeet * baseLaborRate;
 
-  return sqft * BASE_MARKET_RATE_PER_SQFT * multiFloorFactor * bathroomFactor;
-}
+  // Facility multiplier
+  const facilityMultiplier =
+    FACILITY_MULTIPLIERS[facilityType] || 1.25;
 
-function applyMargins({ baseMonthly, isNewClient }) {
-  // Target 45% profit margin overall
-  const targetMarginFactor = 1.45;
+  baseCost *= facilityMultiplier;
 
-  // 5% below market positioning
-  const belowMarketFactor = 0.95;
+  // Service complexity multiplier
+  let serviceMultiplier = 1.0;
 
-  // 10% discount for new contracts
-  const newClientFactor = isNewClient ? 0.9 : 1.0;
+  services.forEach(service => {
+    if (
+      service.includes("strip") ||
+      service.includes("wax") ||
+      service.includes("buff")
+    ) {
+      serviceMultiplier += 0.25;
+    }
 
-  const suggested = baseMonthly * targetMarginFactor;
-  const belowMarket = suggested * belowMarketFactor;
-  const finalWithDiscount = belowMarket * newClientFactor;
+    if (service.includes("carpet")) {
+      serviceMultiplier += 0.15;
+    }
+
+    if (service.includes("medical")) {
+      serviceMultiplier += 0.2;
+    }
+  });
+
+  baseCost *= serviceMultiplier;
+
+  // 24-hour / night facility premium
+  if (is24HourFacility) {
+    baseCost *= 1.10; // +10%
+  }
+
+  // One-time / emergency premium
+  let opportunityFlag = "Recurring Opportunity";
+  if (isOneTimeService) {
+    baseCost *= 1.25;
+    opportunityFlag = "One-Time / Emergency Opportunity";
+  }
+
+  // Frequency adjustment (internal)
+  if (frequency === "weekly") baseCost *= 0.95;
+  if (frequency === "biweekly") baseCost *= 1.0;
+  if (frequency === "monthly") baseCost *= 1.05;
+
+  // Profit model
+  const targetMargin = 0.50;
+  let grossPrice = baseCost / (1 - targetMargin);
+
+  // Discounts (internal only)
+  const firstTimeDiscount = 0.10;
+  const communityDiscount = 0.05;
+
+  const finalInternalPrice =
+    grossPrice * (1 - firstTimeDiscount - communityDiscount);
 
   return {
-    suggestedMonthly: round2(suggested),
-    belowMarketMonthly: round2(belowMarket),
-    finalMonthly: round2(finalWithDiscount)
+    internalCost: Math.round(baseCost),
+    internalTargetPrice: Math.round(finalInternalPrice),
+    opportunityFlag,
+    facilityType,
+    region,
+    services,
+    squareFeet,
+    frequency,
+    is24HourFacility,
+    marginRange: "30–35% after discounts",
+    pricingVisibleToClient: false
   };
 }
-
-function round2(x) {
-  return Math.round((Number(x || 0) + Number.EPSILON) * 100) / 100;
-}
-
-function buildQuoteSummary(payload, pricing) {
-  const {
-    region,
-    city,
-    county,
-    state,
-    facility_type,
-    total_sqft,
-    floors,
-    janitorial_frequency,
-    daily_services,
-    window_need,
-    window_count,
-    bathrooms,
-    special_areas,
-    special_projects,
-    special_project_frequency,
-    supplies_responsibility,
-    contact_name,
-    contact_email,
-    contact_phone,
-    urgency,
-    notes
-  } = payload;
-
-  return `
-New Smart Quote Request — Buenavista Services Inc
-
-Facility
-- Region: ${region}
-- Location: ${city || ""}, ${county || ""}, ${state || ""}
-- Facility type: ${facility_type || ""}
-- Total square footage: ${total_sqft || ""}
-- Floors: ${floors || ""}
-- Bathrooms: ${bathrooms || ""}
-
-Scope
-- Ongoing janitorial frequency: ${janitorial_frequency || ""}
-- Daily required services:
-${(daily_services || "").trim()}
-
-Windows
-- Window cleaning needed: ${window_need || "no"}
-- Approx. number of windows: ${window_count || ""}
-
-Special areas
-${(special_areas || "").trim()}
-
-Special projects (manual pricing)
-- Selected: ${(special_projects || []).join(", ") || "None"}
-- Frequency notes: ${(special_project_frequency || "").trim()}
-
-Supplies
-- Cleaning fluids / supplies: ${supplies_responsibility || ""}
-
-Contact
-- Name: ${contact_name || ""}
-- Email: ${contact_email || ""}
-- Phone: ${contact_phone || ""}
-
-Urgency
-- Urgency rating (1–10): ${urgency || ""}
-
-Internal Pricing Snapshot (approximate)
-- Suggested monthly (pre-positioning): $${pricing.suggestedMonthly}
-- 5% below-market positioning: $${pricing.belowMarketMonthly}
-- Final monthly after 10% new-contract discount (if applicable): $${pricing.finalMonthly}
-
-Notes
-${(notes || "").trim()}
-
-Reminder:
-• This estimate is AI-assisted and MUST be reviewed by management before sending to the client.
-• Labor is modeled at +$3 above applicable minimum wage with a target 45% profit margin, 5% below-market positioning, and 10% new-client discount when marked new.
-`.trim();
-}
-
-module.exports = {
-  estimateBaseLabor,
-  applyMargins,
-  buildQuoteSummary
-};
