@@ -1,73 +1,120 @@
-const { estimateBaseLabor, applyMargins, buildQuoteSummary } = require("../lib/quoteLogic");
-const { sendEmail, sendSMS } = require("../lib/notify");
+import fetch from "node-fetch";
+import { calculateInternalPricing } from "./quoteLogic.js";
+import { sendInternalNotification } from "./notify.js";
 
-module.exports = async (req, res) => {
+async function generateExecutiveSummary(details) {
+  const prompt = `
+You are an INTERNAL OPERATIONS ASSISTANT.
+
+STRICT RULES:
+- DO NOT show pricing
+- DO NOT include dollar amounts
+- DO NOT imply cost
+
+Generate a concise executive summary covering:
+- Scope of work
+- Facility type
+- Risk / complexity
+- Opportunity type
+- Recommended next steps
+
+Details:
+${JSON.stringify(details, null, 2)}
+`;
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      messages: [{ role: "system", content: prompt }]
+    })
+  });
+
+  const data = await response.json();
+  return data?.choices?.[0]?.message?.content || "Summary unavailable";
+}
+
+export default async function handler(req, res) {
   if (req.method !== "POST") {
-    res.statusCode = 405;
-    return res.end("Method Not Allowed");
+    return res.status(405).json({ message: "Method not allowed" });
   }
 
   try {
-    const payload = req.body || {};
     const {
-      total_sqft,
-      floors,
-      bathrooms,
-      urgency,
-      is_new_client
-    } = payload;
+      name,
+      email,
+      phone,
+      region,
+      facilityType,
+      squareFeet,
+      services,
+      frequency,
+      is24HourFacility,
+      isOneTimeService,
+      notes
+    } = req.body || {};
 
-    const baseMonthly = estimateBaseLabor({
-      totalSqft: total_sqft,
-      floors,
-      bathrooms
+    const pricingSnapshot = calculateInternalPricing({
+      squareFeet,
+      facilityType,
+      frequency,
+      is24HourFacility,
+      isOneTimeService
     });
 
-    const pricing = applyMargins({
-      baseMonthly,
-      isNewClient: String(is_new_client || "yes").toLowerCase() !== "no"
+    const executiveSummary = await generateExecutiveSummary({
+      facilityType,
+      squareFeet,
+      services,
+      frequency,
+      is24HourFacility,
+      isOneTimeService,
+      region
     });
 
-    const summary = buildQuoteSummary(payload, pricing);
+    const internalEmailBody = `
+NEW SMART QUOTE (INTERNAL)
 
-    // Email recipients for bids
-    const bidRecipients = (process.env.BID_RECIPIENTS || "")
-      .split(",")
-      .map(x => x.trim())
-      .filter(Boolean);
+Client: ${name}
+Email: ${email}
+Phone: ${phone}
+Region: ${region}
 
-    if (bidRecipients.length) {
-      await sendEmail({
-        to: bidRecipients,
-        subject: "New Smart Quote Request — Buenavista Services Inc",
-        text: summary
-      });
-    }
+Facility Type: ${facilityType}
+Square Feet: ${squareFeet}
+Frequency: ${frequency}
+24-Hour Facility: ${is24HourFacility ? "Yes" : "No"}
+Services: ${services?.join(", ")}
 
-    // High urgency SMS
-    const urgencyNum = Number(urgency || 0) || 0;
-    if (urgencyNum >= 8) {
-      const smsRecipients = (process.env.URGENT_SMS_RECIPIENTS || "")
-        .split(",")
-        .map(x => x.trim())
-        .filter(Boolean);
-      if (smsRecipients.length) {
-        await sendSMS({
-          to: smsRecipients,
-          body: "Buenavista: A high-urgency Smart Quote (8–10) is waiting for review in your email."
-        });
-      }
-    }
+Opportunity Type: ${pricingSnapshot.opportunityFlag}
 
-    res.statusCode = 200;
-    res.json({
-      ok: true,
-      pricing,
-      message: "Quote prepared and sent for management review."
+INTERNAL TARGET PRICE: ${pricingSnapshot.internalTargetPrice}
+EXPECTED MARGIN: ${pricingSnapshot.marginRange}
+
+EXECUTIVE SUMMARY:
+${executiveSummary}
+
+Notes:
+${notes || "None"}
+`;
+
+    await sendInternalNotification({
+      region,
+      subject: `New Smart Quote – ${pricingSnapshot.opportunityFlag}`,
+      body: internalEmailBody
     });
-  } catch (err) {
-    console.error(err);
-    res.statusCode = 500;
-    res.json({ error: "Quote error" });
+
+    return res.status(200).json({
+      status: "received",
+      message:
+        "Thank you. A regional manager will review your request and contact you."
+    });
+  } catch (error) {
+    console.error("Quote error:", error);
+    return res.status(500).json({ message: "Unable to process request" });
   }
-};
+}

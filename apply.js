@@ -1,62 +1,49 @@
-const { sendEmail } = require("../lib/notify");
+import { sendInternalNotification } from "./notify.js";
 
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   if (req.method !== "POST") {
-    res.statusCode = 405;
-    return res.end("Method Not Allowed");
+    return res.status(405).json({ message: "Method not allowed" });
   }
 
   try {
-    const payload = req.body || {};
     const {
       name,
       email,
       phone,
       region,
       position,
-      notes,
       resume,
-      cover
-    } = payload;
+      notes
+    } = req.body || {};
 
-    const lines = [];
-    lines.push("New Career Application — Buenavista Services Inc");
-    lines.push("");
-    lines.push("Applicant");
-    lines.push(`- Name: ${name || ""}`);
-    lines.push(`- Email: ${email || ""}`);
-    lines.push(`- Phone: ${phone || ""}`);
-    lines.push("");
-    lines.push(`Region: ${region || ""}`);
-    lines.push(`Position: ${position || ""}`);
-    lines.push("");
-    lines.push("Notes:");
-    lines.push((notes || "").trim());
-    lines.push("");
+    const body = `
+NEW CAREER APPLICATION (INTERNAL)
 
-    const text = lines.join("\n");
+Name: ${name || "N/A"}
+Email: ${email || "N/A"}
+Phone: ${phone || "N/A"}
+Region: ${region || "N/A"}
+Position: ${position || "N/A"}
 
-    const hrRecipients = (process.env.CAREERS_RECIPIENTS || "")
-      .split(",")
-      .map(x => x.trim())
-      .filter(Boolean);
+Resume:
+${resume || "Not provided"}
 
-    if (hrRecipients.length) {
-      await sendEmail({
-        to: hrRecipients,
-        subject: "New Career Application — Buenavista Services Inc",
-        text
-      });
-    }
+Notes:
+${notes || "None"}
+`;
 
-    // NOTE: This simple example does not attach the resume/cover files.
-    // A production version could upload them to S3 or attach directly if SMTP allows.
+    await sendInternalNotification({
+      region,
+      subject: "New Career Application",
+      body
+    });
 
-    res.statusCode = 200;
-    res.json({ ok: true, message: "Application forwarded to management." });
-  } catch (err) {
-    console.error(err);
-    res.statusCode = 500;
-    res.json({ error: "Apply error" });
+    return res.status(200).json({
+      status: "received",
+      message: "Application submitted successfully."
+    });
+  } catch (error) {
+    console.error("Apply error:", error);
+    return res.status(500).json({ message: "Server error" });
   }
-};
+}

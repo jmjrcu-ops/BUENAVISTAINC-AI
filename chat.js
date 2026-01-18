@@ -1,76 +1,64 @@
-const OpenAI = require("openai");
+import fetch from "node-fetch";
 
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   if (req.method !== "POST") {
-    res.statusCode = 405;
-    return res.end("Method Not Allowed");
+    return res.status(405).json({ message: "Method not allowed" });
   }
 
   try {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      res.statusCode = 500;
-      return res.json({ error: "OPENAI_API_KEY not configured" });
-    }
-    const client = new OpenAI({ apiKey });
+    const {
+      message = "",
+      facilityType,
+      region,
+      is24HourFacility,
+      isOneTimeService
+    } = req.body || {};
 
-    const { message, regions } = req.body || {};
-    const regionText = Array.isArray(regions) && regions.length
-      ? `The visitor has selected these regions of interest: ${regions.join(", ")}.`
-      : "No region chips are selected yet.";
+    const escalationRequired =
+      message.toLowerCase().includes("price") ||
+      message.toLowerCase().includes("quote") ||
+      isOneTimeService ||
+      facilityType === "Medical";
 
     const systemPrompt = `
-You are the Buenavista Services Inc commercial janitorial assistant.
+You are the BuenaVista Services AI assistant.
 
-Rules:
-- STRICTLY commercial work only (offices, medical, schools, warehouses, retail, etc.).
-- Be kind, supportive, and professional.
-- Offer English by default, but you can respond in Spanish or other languages if the user writes in them.
-- NEVER give a final price. Instead, explain that quotes are reviewed by management before being sent.
-- You can help gather details the Smart Quote form needs: square footage, floors, bathrooms, windows, frequency, special projects, supplies, urgency, etc.
-- If the user mentions emergencies or urgent onsite issues, instruct them to contact their regional management team by phone or email as shown on the website.
-- Emphasize the philosophy: "Incomparable Care Every Time" and safe, effective cleaning solutions.
+STRICT RULES:
+- NEVER provide pricing, estimates, dollar amounts, or ranges
+- NEVER imply cost
+- If pricing is requested, escalate politely
+- Focus on services, process, quality, and next steps
+- Medical, emergency, or one-time services ALWAYS escalate
 
-Pricing overview:
-- Labor is modeled at +$3 above minimum wage for each city/county.
-- Target around 45% profit margin per contract.
-- 5% below-average market value positioning.
-- 10% discount for each new contract/client.
-- But again, YOU do not compute final prices — management does.
+If escalation is required, respond:
+"Thanks for the details. A regional manager will review your request and follow up shortly."
 
-Use a warm but concise tone. Break complex information into short paragraphs or bullet points.
-`.trim();
+Otherwise, answer professionally and concisely.
+`;
 
-    const userPrompt = `
-Visitor message:
-${message || ""}
-
-Context:
-${regionText}
-`.trim();
-
-    const completion = await client.responses.create({
-      model: "gpt-4.1-mini",
-      input: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ]
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: message }
+        ]
+      })
     });
 
+    const data = await response.json();
     const reply =
-      completion.output &&
-      completion.output[0] &&
-      completion.output[0].content &&
-      completion.output[0].content[0] &&
-      completion.output[0].content[0].text
-        ? completion.output[0].content[0].text
-        : "Thank you for your message. How can I help you with commercial cleaning today?";
+      data?.choices?.[0]?.message?.content ||
+      "Thank you. A representative will be in touch.";
 
-    res.statusCode = 200;
-    res.json({ reply });
-  } catch (err) {
-    console.error(err);
-    res.statusCode = 500;
-    res.json({ error: "Chat error" });
+    return res.status(200).json({ reply });
+  } catch (error) {
+    console.error("Chat error:", error);
+    return res.status(500).json({ message: "Chat unavailable" });
   }
-};
+}
