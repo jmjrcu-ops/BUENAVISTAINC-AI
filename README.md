@@ -20,7 +20,7 @@ SMTP_FROM = no-reply@buenavistainc.com
 OPENAI_API_KEY = (already set)
 
 - `BID_RECIPIENTS`          → Comma-separated emails for quote review, e.g.  
-                               `billyf75@yahoo.com,jmjrcu@gmail.com,jesusj@buenavistainc.com,camilo@buenavistainc.com`
+                               `billy@buenavistainc.com,jesusj@buenavistainc.com,support@buenavistainc.com,camilo@buenavistainc.com`
 
 - `URGENT_SMS_RECIPIENTS`   → Comma-separated phone numbers for urgency 8–10 SMS, e.g.  
                                `+14255212421,+14252468121`
