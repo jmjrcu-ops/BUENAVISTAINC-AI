@@ -26,7 +26,7 @@ OPENAI_API_KEY = (already set)
                                `+14255212421,+14252468121`
 
 - `CAREERS_RECIPIENTS`      → Comma-separated emails for career applications, e.g.  
-                               `jesusj@buenavistainc.com,billy@buenavistainc.com,camilo@buenavistainc.com,ivan.flores@buenavistainc.com`
+                               `jesusj@buenavistainc.com,billy@buenavistainc.com,camilo@buenavistainc.com,ivan@buenavistainc.com`
 
 ## Deploying to Vercel
 
