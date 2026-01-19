@@ -12,12 +12,12 @@ It provides three serverless endpoints for Vercel:
 
 Set these in your Vercel project:
 
-- `OPENAI_API_KEY`          → Your OpenAI key
-- `SMTP_HOST`               → SMTP server host
-- `SMTP_PORT`               → SMTP port (e.g. 465 or 587)
-- `SMTP_USER`               → SMTP username
-- `SMTP_PASS`               → SMTP password
-- `SMTP_FROM`               → From address, e.g. `no-reply@buenavistainc.com`
+SMTP_HOST = mail.buenavistainc.com
+SMTP_PORT = 465
+SMTP_USER = jesusj@buenavistainc.com
+SMTP_PASS = Cienfuegoscaonao1999!
+SMTP_FROM = no-reply@buenavistainc.com
+OPENAI_API_KEY = (already set)
 
 - `BID_RECIPIENTS`          → Comma-separated emails for quote review, e.g.  
                                `billyf75@yahoo.com,jmjrcu@gmail.com,jesusj@buenavistainc.com,camilo@buenavistainc.com`
