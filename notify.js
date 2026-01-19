@@ -1,64 +1,68 @@
-const nodemailer = require("nodemailer");
-const twilio = require("twilio");
+import nodemailer from "nodemailer";
 
-function buildTransport() {
-  const {
-    SMTP_HOST,
-    SMTP_PORT,
-    SMTP_USER,
-    SMTP_PASS,
-    SMTP_FROM
-  } = process.env;
+/**
+ * INTERNAL EMAIL ONLY
+ * NO CLIENT VISIBILITY
+ */
+export async function sendInternalNotification({
+  region,
+  subject,
+  body
+}) {
+  const REGION_EMAIL_MAP = {
+    "Western Washington": [
+      "billy@buenavistainc.com",
+      "jesus@buenavistainc.com"
+    ],
+    "Eastern Washington": [
+      "ivan@buenavistainc.com",
+      "billy@buenavistainc.com",
+      "jesus@buenavistainc.com"
+    ],
+    "Oregon": [
+      "ivan@buenavistainc.com",
+      "jesus@buenavistainc.com"
+    ],
+    "Florida": [
+      "camilo@buenavistainc.com",
+      "jesus@buenavistainc.com"
+    ]
+  };
 
-  if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS || !SMTP_FROM) {
-    console.warn("SMTP not fully configured; email sending is disabled.");
-    return null;
+  const primaryRecipients = REGION_EMAIL_MAP[region] || [
+    "billy@buenavistainc.com",
+    "jesus@buenavistainc.com"
+  ];
+
+  try {
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT),
+      secure: true, // REQUIRED for Netfirms
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS
+      }
+    });
+
+    const mailOptions = {
+      from: process.env.SMTP_FROM,
+      to: primaryRecipients.join(", "),
+      cc: "support@buenavistainc.com",
+      subject,
+      text: body
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+
+    console.log("✅ EMAIL SENT:", info.messageId);
+    console.log("➡️ TO:", primaryRecipients);
+    console.log("📎 CC: support@buenavistainc.com");
+
+    return true;
+
+  } catch (error) {
+    console.error("❌ EMAIL FAILED:", error);
+    throw error;
   }
-
-  return nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: Number(SMTP_PORT),
-    secure: Number(SMTP_PORT) === 465,
-    auth: {
-      user: SMTP_USER,
-      pass: SMTP_PASS
-    }
-  });
 }
-
-async function sendEmail({ to, subject, text }) {
-  const transport = buildTransport();
-  if (!transport) {
-    console.warn("Email skipped (SMTP not configured).");
-    return;
-  }
-  const from = process.env.SMTP_FROM;
-  const recipients = Array.isArray(to) ? to.join(",") : to;
-  await transport.sendMail({ from, to: recipients, subject, text });
-}
-
-function buildTwilio() {
-  const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM } = process.env;
-  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_FROM) {
-    console.warn("Twilio not fully configured; SMS sending is disabled.");
-    return null;
-  }
-  return { client: twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN), from: TWILIO_FROM };
-}
-
-async function sendSMS({ to, body }) {
-  const tw = buildTwilio();
-  if (!tw) {
-    console.warn("SMS skipped (Twilio not configured).");
-    return;
-  }
-  const nums = Array.isArray(to) ? to : [to];
-  for (const n of nums) {
-    await tw.client.messages.create({ from: tw.from, to: n, body });
-  }
-}
-
-module.exports = {
-  sendEmail,
-  sendSMS
-};
